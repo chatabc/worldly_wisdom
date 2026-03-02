@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any
 import httpx
-from openai import AsyncOpenAI
 from app.config import settings
 
 
@@ -15,8 +14,27 @@ class BaseLLMService(ABC):
         pass
 
 
+class MockLLMService(BaseLLMService):
+    """模拟LLM服务，用于测试"""
+    
+    async def analyze_text(self, text: str, system_prompt: str) -> str:
+        return '''{
+            "real_intent": "说话人希望你能自主决策，但同时也在观察你的判断能力和责任心",
+            "metaphors": ["'看着办'表面是授权，实际可能是考验或推卸责任"],
+            "emotional_state": "表面平静，内心可能在观察你的反应",
+            "attitude": "既期待又保留，给你空间但也留有余地",
+            "potential_traps": ["不要以为真的是完全授权", "需要考虑领导的潜在期望", "决策后要及时汇报"]
+        }'''
+    
+    async def analyze_image(self, image_base64: str, text: Optional[str], system_prompt: str) -> str:
+        return self.analyze_text(text or "图片内容", system_prompt)
+
+
 class OpenAIService(BaseLLMService):
     def __init__(self):
+        if not settings.OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY is not set")
+        from openai import AsyncOpenAI
         self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         self.model = settings.OPENAI_MODEL
 
@@ -54,6 +72,8 @@ class OpenAIService(BaseLLMService):
 class QwenService(BaseLLMService):
     def __init__(self):
         self.api_key = settings.QWEN_API_KEY
+        if not self.api_key:
+            raise ValueError("QWEN_API_KEY is not set")
         self.model = settings.QWEN_MODEL
         self.base_url = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
 
@@ -141,6 +161,16 @@ class OllamaService(BaseLLMService):
 
 def get_llm_service(provider: Optional[str] = None) -> BaseLLMService:
     provider = provider or settings.DEFAULT_MODEL_PROVIDER
+    
+    # 如果没有配置任何API Key，使用模拟服务
+    has_api_key = (
+        (provider == "openai" and settings.OPENAI_API_KEY) or
+        (provider == "qwen" and settings.QWEN_API_KEY) or
+        (provider == "ollama")
+    )
+    
+    if not has_api_key:
+        return MockLLMService()
     
     services = {
         "openai": OpenAIService,
