@@ -1,0 +1,193 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - wisdom-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://wisdom:wisdom123@db:5432/wisdom_db
+      - REDIS_URL=redis://redis:6379/0
+      - CHROMADB_HOST=http://chromadb:8000
+      - MINIO_ENDPOINT=minio:9000
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - QWEN_API_KEY=${QWEN_API_KEY:-}
+    depends_on:
+      - db
+      - redis
+      - chromadb
+      - minio
+    volumes:
+      - ./backend:/app
+    networks:
+      - wisdom-network
+
+  learning:
+    build:
+      context: ./learning
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - DATABASE_URL=postgresql://wisdom:wisdom123@db:5432/wisdom_db
+      - REDIS_URL=redis://redis:6379/0
+      - CHROMADB_HOST=http://chromadb:8000
+      - MINIO_ENDPOINT=minio:9000
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - QWEN_API_KEY=${QWEN_API_KEY:-}
+      - LEARNING_ENABLED=${LEARNING_ENABLED:-true}
+      - DOUYIN_KEYWORDS=${DOUYIN_KEYWORDS:-职场话术,领导意图,官场智慧}
+      - BILIBILI_KEYWORDS=${BILIBILI_KEYWORDS:-职场沟通,心理学,人际关系}
+      - VIDEO_STORAGE_PATH=/data/videos
+      - WHISPER_MODEL=${WHISPER_MODEL:-base}
+    depends_on:
+      - db
+      - redis
+      - chromadb
+      - minio
+    volumes:
+      - ./learning:/app
+      - video-data:/data/videos
+    networks:
+      - wisdom-network
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8002
+
+  learning-worker:
+    build:
+      context: ./learning
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://wisdom:wisdom123@db:5432/wisdom_db
+      - REDIS_URL=redis://redis:6379/0
+      - CHROMADB_HOST=http://chromadb:8000
+      - MINIO_ENDPOINT=minio:9000
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - QWEN_API_KEY=${QWEN_API_KEY:-}
+      - LEARNING_ENABLED=${LEARNING_ENABLED:-true}
+      - VIDEO_STORAGE_PATH=/data/videos
+      - WHISPER_MODEL=${WHISPER_MODEL:-base}
+    depends_on:
+      - db
+      - redis
+      - learning
+    volumes:
+      - ./learning:/app
+      - video-data:/data/videos
+    networks:
+      - wisdom-network
+    command: celery -A app.worker.celery_app worker --loglevel=info
+
+  learning-beat:
+    build:
+      context: ./learning
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://wisdom:wisdom123@db:5432/wisdom_db
+      - REDIS_URL=redis://redis:6379/0
+      - LEARNING_ENABLED=${LEARNING_ENABLED:-true}
+    depends_on:
+      - redis
+      - learning-worker
+    volumes:
+      - ./learning:/app
+    networks:
+      - wisdom-network
+    command: celery -A app.worker.celery_app beat --loglevel=info
+
+  db:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=wisdom
+      - POSTGRES_PASSWORD=wisdom123
+      - POSTGRES_DB=wisdom_db
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - wisdom-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - wisdom-network
+
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8001:8000"
+    environment:
+      - CHROMADB_SERVER_HOST=0.0.0.0
+      - CHROMADB_SERVER_HTTP_PORT=8000
+    volumes:
+      - chroma-data:/chroma/chroma
+    networks:
+      - wisdom-network
+
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - wisdom-network
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - wisdom-network
+
+volumes:
+  postgres-data:
+  redis-data:
+  chroma-data:
+  minio-data:
+  ollama-data:
+  video-data:
+
+networks:
+  wisdom-network:
+    driver: bridge
