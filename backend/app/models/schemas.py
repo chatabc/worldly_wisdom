@@ -1,6 +1,7 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional, List
 from datetime import datetime
+import json
 
 
 class AnalysisRequest(BaseModel):
@@ -50,6 +51,16 @@ class KnowledgeItemResponse(BaseModel):
     source: Optional[str]
     source_url: Optional[str]
     created_at: datetime
+
+    @field_validator('tags', mode='before')
+    @classmethod
+    def parse_tags(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except:
+                return []
+        return v
 
     class Config:
         from_attributes = True

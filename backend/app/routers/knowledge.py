@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from typing import List, Optional
+import json
 from app.models.schemas import KnowledgeItemCreate, KnowledgeItemResponse
 from app.models.models import KnowledgeItem
 from app.services.database import get_db
@@ -18,7 +19,7 @@ async def create_knowledge_item(
         title=item.title,
         content=item.content,
         category=item.category,
-        tags=item.tags,
+        tags=json.dumps(item.tags) if item.tags else None,
         source=item.source,
         source_url=item.source_url
     )

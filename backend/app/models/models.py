@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, JSON
 from sqlalchemy.sql import func
 from app.services.database import Base
+import json
 
 
 class KnowledgeItem(Base):
@@ -16,6 +17,17 @@ class KnowledgeItem(Base):
     embedding_id = Column(String(255))
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    
+    def get_tags(self):
+        if self.tags:
+            try:
+                return json.loads(self.tags)
+            except:
+                return []
+        return []
+    
+    def set_tags(self, tags):
+        self.tags = json.dumps(tags) if tags else None
 
 
 class ModelConfig(Base):
@@ -27,7 +39,7 @@ class ModelConfig(Base):
     api_key = Column(String(255))
     api_base = Column(String(255))
     is_active = Column(Boolean, default=False)
-    config = Column(JSON)
+    config = Column(Text)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -38,7 +50,7 @@ class ConversationHistory(Base):
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(String(255), index=True)
     user_input = Column(Text, nullable=False)
-    analysis_result = Column(JSON)
+    analysis_result = Column(Text)
     model_used = Column(String(100))
     created_at = Column(DateTime, server_default=func.now())
 

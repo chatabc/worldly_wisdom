@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.routers import analysis, knowledge, config, health, audio
+from app.services.database import init_db
 
 
 def create_app() -> FastAPI:
@@ -24,6 +25,10 @@ def create_app() -> FastAPI:
     app.include_router(knowledge.router, prefix="/api/knowledge", tags=["knowledge"])
     app.include_router(config.router, prefix="/api/config", tags=["config"])
     app.include_router(audio.router, prefix="/api/audio", tags=["audio"])
+
+    @app.on_event("startup")
+    def startup_event():
+        init_db()
 
     return app
 
